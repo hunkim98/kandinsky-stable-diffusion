@@ -3,20 +3,16 @@ from typing import List
 
 import torch
 from diffusers import (
-    DiffusionPipeline,
-    StableDiffusionImg2ImgPipeline,
-    PNDMScheduler,
-    LMSDiscreteScheduler,
+    StableDiffusionPipeline,
     DDIMScheduler,
     EulerDiscreteScheduler,
-    EulerAncestralDiscreteScheduler,
     DPMSolverMultistepScheduler,
 )
 
 from PIL import Image
 from cog import BasePredictor, Input, Path
 
-MODEL_ID = "stabilityai/stable-diffusion-2"
+MODEL_ID = "stabilityai/stable-diffusion-2-1"
 MODEL_CACHE = "diffusers-cache"
 
 
@@ -24,14 +20,13 @@ class Predictor(BasePredictor):
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
         print("Loading pipeline...")
-        self.txt2img_pipe = DiffusionPipeline.from_pretrained(
+        self.pipe = StableDiffusionPipeline.from_pretrained(
             MODEL_ID,
             cache_dir=MODEL_CACHE,
             local_files_only=True,
         ).to("cuda")
 
     @torch.inference_mode()
-    @torch.cuda.amp.autocast()
     def predict(
         self,
         prompt: str = Input(
@@ -69,7 +64,7 @@ class Predictor(BasePredictor):
             description="Scale for classifier-free guidance", ge=1, le=20, default=7.5
         ),
         scheduler: str = Input(
-            default="K_EULER",
+            default="DPMSolverMultistep",
             choices=[
                 "DDIM",
                 "K_EULER",
@@ -91,12 +86,10 @@ class Predictor(BasePredictor):
                 "Maximum size is 1024x768 or 768x1024 pixels, because of memory limits. Please select a lower width or height."
             )
 
-        pipe = self.txt2img_pipe
-
-        pipe.scheduler = make_scheduler(scheduler, pipe.scheduler.config)
+        self.pipe.scheduler = make_scheduler(scheduler, self.pipe.scheduler.config)
 
         generator = torch.Generator("cuda").manual_seed(seed)
-        output = pipe(
+        output = self.pipe(
             prompt=[prompt] * num_outputs if prompt is not None else None,
             negative_prompt=[negative_prompt] * num_outputs
             if negative_prompt is not None
@@ -123,4 +116,3 @@ def make_scheduler(name, config):
         "K_EULER": EulerDiscreteScheduler.from_config(config),
         "DPMSolverMultistep": DPMSolverMultistepScheduler.from_config(config),
     }[name]
-
