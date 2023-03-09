@@ -26,16 +26,22 @@ class Predictor(BasePredictor):
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
         print("Loading pipeline...")
+        # safety_checker = StableDiffusionSafetyChecker.from_pretrained(
+        #     SAFETY_MODEL_ID,
+        #     cache_dir=MODEL_CACHE,
+        #     local_files_only=True,
+        # )
+        # self.pipe = StableDiffusionPipeline.from_pretrained(
+        #     MODEL_ID,
+        #     safety_checker=safety_checker,
+        #     cache_dir=MODEL_CACHE,
+        #     local_files_only=True,
+        # ).to("cuda")
         safety_checker = StableDiffusionSafetyChecker.from_pretrained(
-            SAFETY_MODEL_ID,
-            cache_dir=MODEL_CACHE,
-            local_files_only=True,
+            f"{MODEL_CACHE}/{SAFETY_MODEL_ID}"
         )
         self.pipe = StableDiffusionPipeline.from_pretrained(
-            MODEL_ID,
-            safety_checker=safety_checker,
-            cache_dir=MODEL_CACHE,
-            local_files_only=True,
+            f"{MODEL_CACHE}/{MODEL_ID}", safety_checker=safety_checker
         ).to("cuda")
 
     @torch.inference_mode()
