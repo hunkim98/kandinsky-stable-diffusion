@@ -1,67 +1,80 @@
 import os
 from typing import List
+from PIL import Image
 
 import torch
 from cog import BasePredictor, Input, Path
 from diffusers import (
-    StableDiffusionPipeline,
-    PNDMScheduler,
-    LMSDiscreteScheduler,
-    DDIMScheduler,
-    EulerDiscreteScheduler,
-    EulerAncestralDiscreteScheduler,
-    DPMSolverMultistepScheduler,
-)
-from diffusers.pipelines.stable_diffusion.safety_checker import (
-    StableDiffusionSafetyChecker,
+    KandinskyImg2ImgPipeline,
+    KandinskyPriorPipeline,
+    KandinskyPipeline,
 )
 
 
-MODEL_ID = "stabilityai/stable-diffusion-2-1"
-MODEL_CACHE = "diffusers-cache"
-SAFETY_MODEL_ID = "CompVis/stable-diffusion-safety-checker"
+MODEL_CACHE = "model_cache"
 
 
 class Predictor(BasePredictor):
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
         print("Loading pipeline...")
-        safety_checker = StableDiffusionSafetyChecker.from_pretrained(
-            SAFETY_MODEL_ID,
+
+        self.pipe_prior = KandinskyPriorPipeline.from_pretrained(
+            "kandinsky-community/kandinsky-2-1-prior",
             cache_dir=MODEL_CACHE,
             local_files_only=True,
-        )
-        self.pipe = StableDiffusionPipeline.from_pretrained(
-            MODEL_ID,
-            safety_checker=safety_checker,
+            torch_dtype=torch.float16,
+        ).to("cuda")
+        self.t2i_pipe = KandinskyPipeline.from_pretrained(
+            "kandinsky-community/kandinsky-2-1",
             cache_dir=MODEL_CACHE,
             local_files_only=True,
+            torch_dtype=torch.float16,
+        ).to("cuda")
+        self.i2i_pipe = KandinskyImg2ImgPipeline.from_pretrained(
+            "kandinsky-community/kandinsky-2-1",
+            cache_dir=MODEL_CACHE,
+            local_files_only=True,
+            torch_dtype=torch.float16,
         ).to("cuda")
 
     @torch.inference_mode()
     def predict(
         self,
+        task: str = Input(
+            description="Choose a task",
+            choices=["text2img", "text_guided_img2img"],
+            default="text2img",
+        ),
         prompt: str = Input(
-            description="Input prompt",
-            default="a photo of an astronaut riding a horse on mars",
+            description="Provide input prompt",
+            default="A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting",
         ),
         negative_prompt: str = Input(
-            description="Specify things to not see in the output",
+            description="Specify things to not see in the output for text2img and text_guided_img2img tasks",
+            default="low quality, bad quality",
+        ),
+        image: Path = Input(
+            description="Input image for text_guided_img2img task",
             default=None,
         ),
+        strength: float = Input(
+            description="indicates how much to transform the input iamge, valid for text_guided_img2img task.",
+            default=0.3,
+            le=1,
+            ge=0,
+        ),
         width: int = Input(
-            description="Width of output image. Maximum size is 1024x768 or 768x1024 because of memory limits",
-            choices=[128, 256, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024],
-            default=768,
+            description="Width of output image. Reduce the seeting if hits memory limits",
+            ge=128,
+            le=1024,
+            default=512,
         ),
         height: int = Input(
-            description="Height of output image. Maximum size is 1024x768 or 768x1024 because of memory limits",
-            choices=[128, 256, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024],
-            default=768,
-        ),
-        prompt_strength: float = Input(
-            description="Prompt strength when using init image. 1.0 corresponds to full destruction of information in init image",
-            default=0.8,
+            description="Height of output image. Reduce the seeting if hits memory limits",
+            ge=128,
+            le=1024,
+            default=512,
         ),
         num_outputs: int = Input(
             description="Number of images to output.",
@@ -69,23 +82,14 @@ class Predictor(BasePredictor):
             le=4,
             default=1,
         ),
+        num_steps_prior: int = Input(
+            description="Number of denoising steps in prior", ge=1, le=500, default=25
+        ),
         num_inference_steps: int = Input(
-            description="Number of denoising steps", ge=1, le=500, default=50
+            description="Number of denoising steps", ge=1, le=500, default=100
         ),
         guidance_scale: float = Input(
-            description="Scale for classifier-free guidance", ge=1, le=20, default=7.5
-        ),
-        scheduler: str = Input(
-            default="DPMSolverMultistep",
-            choices=[
-                "DDIM",
-                "K_EULER",
-                "DPMSolverMultistep",
-                "K_EULER_ANCESTRAL",
-                "PNDM",
-                "KLMS",
-            ],
-            description="Choose a scheduler.",
+            description="Scale for classifier-free guidance", ge=1, le=20, default=4.0
         ),
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
@@ -95,50 +99,48 @@ class Predictor(BasePredictor):
         if seed is None:
             seed = int.from_bytes(os.urandom(2), "big")
         print(f"Using seed: {seed}")
-
-        if width * height > 786432:
-            raise ValueError(
-                "Maximum size is 1024x768 or 768x1024 pixels, because of memory limits. Please select a lower width or height."
-            )
-
-        self.pipe.scheduler = make_scheduler(scheduler, self.pipe.scheduler.config)
-
         generator = torch.Generator("cuda").manual_seed(seed)
-        output = self.pipe(
-            prompt=[prompt] * num_outputs if prompt is not None else None,
-            negative_prompt=[negative_prompt] * num_outputs
-            if negative_prompt is not None
-            else None,
-            width=width,
-            height=height,
+
+        image_embeds, negative_image_embeds = self.pipe_prior(
+            prompt,
+            negative_prompt,
+            num_images_per_prompt=num_outputs,
             guidance_scale=guidance_scale,
+            num_inference_steps=num_steps_prior,
             generator=generator,
-            num_inference_steps=num_inference_steps,
-        )
+        ).to_tuple()
 
+        if task == "text2img":
+            images = self.t2i_pipe(
+                prompt=[prompt] * num_outputs,
+                negative_prompt=[negative_prompt] * num_outputs,
+                image_embeds=image_embeds,
+                width=width,
+                height=height,
+                num_inference_steps=num_inference_steps,
+                negative_image_embeds=negative_image_embeds,
+            ).images
+        else:
+            assert (
+                prompt is not None and image is not None
+            ), "Please provide prompt and image for text_guided_img2img task"
+            original_image = Image.open(str(image)).convert("RGB")
+            original_image = original_image.resize((768, 512))
+
+            images = self.i2i_pipe(
+                prompt=[prompt] * num_outputs,
+                image=[original_image] * num_outputs,
+                image_embeds=image_embeds,
+                num_inference_steps=num_inference_steps,
+                negative_image_embeds=negative_image_embeds,
+                width=width,
+                height=height,
+                strength=strength,
+            ).images
         output_paths = []
-        for i, sample in enumerate(output.images):
-            if output.nsfw_content_detected and output.nsfw_content_detected[i]:
-                continue
-
+        for i, img in enumerate(images):
             output_path = f"/tmp/out-{i}.png"
-            sample.save(output_path)
+            img.save(output_path)
             output_paths.append(Path(output_path))
 
-        if len(output_paths) == 0:
-            raise Exception(
-                f"NSFW content detected. Try running it again, or try a different prompt."
-            )
-
         return output_paths
-
-
-def make_scheduler(name, config):
-    return {
-        "PNDM": PNDMScheduler.from_config(config),
-        "KLMS": LMSDiscreteScheduler.from_config(config),
-        "DDIM": DDIMScheduler.from_config(config),
-        "K_EULER": EulerDiscreteScheduler.from_config(config),
-        "K_EULER_ANCESTRAL": EulerAncestralDiscreteScheduler.from_config(config),
-        "DPMSolverMultistep": DPMSolverMultistepScheduler.from_config(config),
-    }[name]

@@ -2,26 +2,36 @@
 
 import os
 import shutil
-from diffusers import StableDiffusionPipeline
-from diffusers.pipelines.stable_diffusion.safety_checker import (
-    StableDiffusionSafetyChecker,
+import torch
+from diffusers import (
+    KandinskyImg2ImgPipeline,
+    KandinskyPriorPipeline,
+    KandinskyPipeline,
 )
 
 
-MODEL_ID = "stabilityai/stable-diffusion-2-1"
-MODEL_CACHE = "diffusers-cache"
-SAFETY_MODEL_ID = "CompVis/stable-diffusion-safety-checker"
+MODEL_CACHE = "model_cache"
+
 
 if os.path.exists(MODEL_CACHE):
     shutil.rmtree(MODEL_CACHE)
 os.makedirs(MODEL_CACHE, exist_ok=True)
 
-saftey_checker = StableDiffusionSafetyChecker.from_pretrained(
-    SAFETY_MODEL_ID,
+
+pipe_prior = KandinskyPriorPipeline.from_pretrained(
+    "kandinsky-community/kandinsky-2-1-prior",
     cache_dir=MODEL_CACHE,
+    torch_dtype=torch.float16,
 )
 
-pipe = StableDiffusionPipeline.from_pretrained(
-    MODEL_ID,
+t2i_pipe = KandinskyPipeline.from_pretrained(
+    "kandinsky-community/kandinsky-2-1",
     cache_dir=MODEL_CACHE,
+    torch_dtype=torch.float16,
+)
+
+pipe = KandinskyImg2ImgPipeline.from_pretrained(
+    "kandinsky-community/kandinsky-2-1",
+    cache_dir=MODEL_CACHE,
+    torch_dtype=torch.float16,
 )
