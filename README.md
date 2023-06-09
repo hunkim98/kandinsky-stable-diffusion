@@ -1,8 +1,8 @@
-# Stable Diffusion v2 Cog model
+# DiffEdit Stable Diffusion Cog model
 
-[![Replicate](https://replicate.com/stability-ai/stable-diffusion/badge)](https://replicate.com/stability-ai/stable-diffusion) 
+[![Replicate](https://replicate.com/cjwbw/diffedit-stable-diffusion/badge)](https://replicate.com/cjwbw/diffedit-stable-diffusion) 
 
-This is an implementation of the [Diffusers Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) as a Cog model. [Cog packages machine learning models as standard containers.](https://github.com/replicate/cog)
+This is an implementation of the [DiffEdit-stable-diffusion](https://github.com/Xiang-cd/DiffEdit-stable-diffusion) as a Cog model. [Cog packages machine learning models as standard containers.](https://github.com/replicate/cog)
 
 First, download the pre-trained weights:
 
@@ -10,4 +10,4 @@ First, download the pre-trained weights:
 
 Then, you can run predictions:
 
-    cog predict -i prompt="monkey scuba diving"
+    cog predict -i image=...
