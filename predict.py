@@ -78,13 +78,13 @@ class Predictor(BasePredictor):
         ),
         width: int = Input(
             description="Width of output image. Reduce the seeting if hits memory limits",
-            ge=128,
+            ge=512,
             le=1024,
             default=256,
         ),
         height: int = Input(
             description="Height of output image. Reduce the seeting if hits memory limits",
-            ge=128,
+            ge=512,
             le=1024,
             default=256,
         ),
@@ -162,7 +162,7 @@ class Predictor(BasePredictor):
             images = self.inpaint_pipe(
                 prompt=[prompt] * num_outputs,
                 image=[original_image] * num_outputs,
-                mask=[mask_image] * num_outputs,
+                mask_image=[mask_image] * num_outputs,
                 image_embeds=image_embeds,
                 num_inference_steps=num_inference_steps,
                 negative_image_embeds=negative_image_embeds,
