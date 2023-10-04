@@ -80,13 +80,13 @@ class Predictor(BasePredictor):
             description="Width of output image. Reduce the seeting if hits memory limits",
             ge=128,
             le=1024,
-            default=512,
+            default=256,
         ),
         height: int = Input(
             description="Height of output image. Reduce the seeting if hits memory limits",
             ge=128,
             le=1024,
-            default=512,
+            default=256,
         ),
         num_outputs: int = Input(
             description="Number of images to output.",
