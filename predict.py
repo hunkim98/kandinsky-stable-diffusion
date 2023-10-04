@@ -5,6 +5,7 @@ from PIL import Image
 import torch
 from cog import BasePredictor, Input, Path
 from diffusers import (
+    KandinskyInpaintPipeline,
     KandinskyImg2ImgPipeline,
     KandinskyPriorPipeline,
     KandinskyPipeline,
@@ -38,12 +39,19 @@ class Predictor(BasePredictor):
             torch_dtype=torch.float16,
         ).to("cuda")
 
+        self.inpaint_pipe = KandinskyInpaintPipeline.from_pretrained(
+            "kandinsky-community/kandinsky-2-1-inpaint",
+            cache_dir=MODEL_CACHE,
+            local_files_only=True,
+            torch_dtype=torch.float16,
+        ).to("cuda")
+
     @torch.inference_mode()
     def predict(
         self,
         task: str = Input(
             description="Choose a task",
-            choices=["text2img", "text_guided_img2img"],
+            choices=["text2img", "text_guided_img2img", "inpaint"],
             default="text2img",
         ),
         prompt: str = Input(
@@ -56,6 +64,10 @@ class Predictor(BasePredictor):
         ),
         image: Path = Input(
             description="Input image for text_guided_img2img task",
+            default=None,
+        ),
+        mask: Path = Input(
+            description="Mask for inpainting task",
             default=None,
         ),
         strength: float = Input(
@@ -120,7 +132,7 @@ class Predictor(BasePredictor):
                 num_inference_steps=num_inference_steps,
                 negative_image_embeds=negative_image_embeds,
             ).images
-        else:
+        elif task == "text_guided_img2img":
             assert (
                 prompt is not None and image is not None
             ), "Please provide prompt and image for text_guided_img2img task"
@@ -137,6 +149,28 @@ class Predictor(BasePredictor):
                 height=height,
                 strength=strength,
             ).images
+        else:  # this is inpaint
+            assert (
+                prompt is not None and image is not None
+            ), "Please provide prompt and image for inpaint task"
+            assert (mask is not None), "Please provide mask for inpaint task"
+            original_image = Image.open(str(image)).convert("RGB")
+            original_image = original_image.resize((768, 512))
+            mask_image = Image.open(str(mask)).convert("RGB")
+            mask_image = mask_image.resize((768, 512))
+
+            images = self.inpaint_pipe(
+                prompt=[prompt] * num_outputs,
+                image=[original_image] * num_outputs,
+                mask=[mask_image] * num_outputs,
+                image_embeds=image_embeds,
+                num_inference_steps=num_inference_steps,
+                negative_image_embeds=negative_image_embeds,
+                width=width,
+                height=height,
+                strength=strength,
+            ).images
+
         output_paths = []
         for i, img in enumerate(images):
             output_path = f"/tmp/out-{i}.png"
