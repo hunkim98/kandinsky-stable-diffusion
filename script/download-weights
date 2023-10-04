@@ -4,6 +4,7 @@ import os
 import shutil
 import torch
 from diffusers import (
+    KandinskyInpaintPipeline,
     KandinskyImg2ImgPipeline,
     KandinskyPriorPipeline,
     KandinskyPipeline,
@@ -32,6 +33,12 @@ t2i_pipe = KandinskyPipeline.from_pretrained(
 
 pipe = KandinskyImg2ImgPipeline.from_pretrained(
     "kandinsky-community/kandinsky-2-1",
+    cache_dir=MODEL_CACHE,
+    torch_dtype=torch.float16,
+)
+
+inpaint_pipe = KandinskyInpaintPipeline.from_pretrained(
+    "kandinsky-community/kandinsky-2-1-inpaint",
     cache_dir=MODEL_CACHE,
     torch_dtype=torch.float16,
 )
