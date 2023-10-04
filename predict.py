@@ -78,15 +78,15 @@ class Predictor(BasePredictor):
         ),
         width: int = Input(
             description="Width of output image. Reduce the seeting if hits memory limits",
-            ge=512,
+            ge=128,
             le=1024,
-            default=256,
+            default=512,
         ),
         height: int = Input(
             description="Height of output image. Reduce the seeting if hits memory limits",
-            ge=512,
+            ge=128,
             le=1024,
-            default=256,
+            default=512,
         ),
         num_outputs: int = Input(
             description="Number of images to output.",
@@ -168,7 +168,7 @@ class Predictor(BasePredictor):
                 negative_image_embeds=negative_image_embeds,
                 width=width,
                 height=height,
-                strength=strength,
+                # strength=strength,
             ).images
 
         output_paths = []
